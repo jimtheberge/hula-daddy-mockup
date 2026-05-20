@@ -513,34 +513,38 @@ function loadScenario(key) {
   document.querySelectorAll('.scenario-tab').forEach(t => t.classList.remove('active'));
   event.target.classList.add('active');
   const s = SCENARIOS[key];
-  document.getElementById('sc-title').textContent = s.title;
-  document.getElementById('sc-desc').textContent = s.desc;
   // Clear chat
   const msgs = document.getElementById('chat-msgs');
   msgs.innerHTML = '';
   chatHistory = [];
-  // Load messages with delays
-  let delay = 0;
-  s.messages.forEach((m, i) => {
-    if (i === 0) { appendMsg(m.role, m.text, m.product); delay = 0; return; }
-    const d = delay;
-    const prevRole = s.messages[i-1].role;
-    const addDelay = prevRole === 'a' ? 300 : 1200;
-    delay += addDelay;
-    setTimeout(() => {
-      if (m.role === 'a') {
-        showTyping();
-        setTimeout(() => { removeTyping(); appendMsg(m.role, m.text, m.product); }, 800);
-      } else {
-        appendMsg(m.role, m.text, m.product);
-      }
-    }, d);
-  });
-  // Update quick replies
+  // Update quick replies and scenario card
   const qr = document.getElementById('quick-replies');
   qr.innerHTML = s.quickReplies.map(r => `<div class="qr" onclick="sendQuick(this.textContent)">${r}</div>`).join('');
-  // Update scenario card preview
   updateScenarioCard(key);
+  // Play messages sequentially — each waits for the previous to finish
+  function playMsgLocal(index) {
+    if (index >= s.messages.length) return;
+    const m = s.messages[index];
+    if (m.role === 'u') {
+      // User message — show immediately then wait before next
+      appendMsg('u', m.text, m.product || null);
+      setTimeout(() => playMsgLocal(index + 1), 900);
+    } else {
+      // Agent message — show typing indicator, then reveal message
+      const typingDelay = index === 0 ? 0 : 400;
+      setTimeout(() => {
+        showTyping();
+        // Typing duration scales with message length
+        const typingDuration = Math.min(600 + m.text.length * 8, 1800);
+        setTimeout(() => {
+          removeTyping();
+          appendMsg('a', m.text, m.product || null);
+          setTimeout(() => playMsgLocal(index + 1), 500);
+        }, typingDuration);
+      }, typingDelay);
+    }
+  }
+  playMsgLocal(0);
 }
 
 function updateScenarioCard(key) {
@@ -630,22 +634,28 @@ function sendQuick(text) {
 }
 
 // ── INIT ─────────────────────────────────────────────────────────
-// Load initial scenario
-const msgs = document.getElementById('chat-msgs');
-const initial = SCENARIOS['gift'];
-initial.messages.forEach((m, i) => {
-  if (i === 0) { appendMsg(m.role, m.text, m.product); return; }
-  const d = i * 400;
-  setTimeout(() => {
-    if (m.role === 'a') {
+// Load initial scenario using the same sequential player
+function playMsg(messages, index) {
+  if (index >= messages.length) return;
+  const m = messages[index];
+  if (m.role === 'u') {
+    appendMsg('u', m.text, m.product || null);
+    setTimeout(() => playMsg(messages, index + 1), 900);
+  } else {
+    const typingDelay = index === 0 ? 0 : 400;
+    setTimeout(() => {
       showTyping();
-      setTimeout(() => { removeTyping(); appendMsg(m.role, m.text, m.product); }, 700);
-    } else {
-      appendMsg(m.role, m.text);
-    }
-  }, d * 1.4);
-});
+      const typingDuration = Math.min(600 + m.text.length * 8, 1800);
+      setTimeout(() => {
+        removeTyping();
+        appendMsg('a', m.text, m.product || null);
+        setTimeout(() => playMsg(messages, index + 1), 500);
+      }, typingDuration);
+    }, typingDelay);
+  }
+}
 updateScenarioCard('gift');
+playMsg(SCENARIOS['gift'].messages, 0);
 </script>
 </body>
 </html>
